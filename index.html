@@ -234,6 +234,9 @@ const A = {
     // synth stabs
     if(I>=2 && (s===4||s===20)) this.stab(t, s===4?10:5, 0.7);
     if(I>=3 && (s===10||s===26)) this.stab(t,12,0.5);
+    // disco overdrive layer
+    if(I>=5 && (s===8||s===24)) this.stab(t,7,0.6);
+    if(I>=5 && s%8===0) this.clap(t,0.5);
     // sheep dash bleats on every beat while playing
     if(this.bleatsOn && s%4===0){
       const beat=s/4;
@@ -495,6 +498,13 @@ function burstShock(x,y,color){
       size:rnd(2,5), color, kind:'dot', rot:0,vr:0,g:0 });
   }
 }
+function burstLines(x,y,color,n){
+  for(let i=0;i<n;i++){
+    const a=(i/n)*TAU+rnd(-0.2,0.2), sp=rnd(14,26);
+    spawnParticle({ x:x+Math.cos(a)*20, y:y+Math.sin(a)*20, vx:Math.cos(a)*sp, vy:Math.sin(a)*sp,
+      life:0.22, max:0.22, size:rnd(14,26), color, kind:'line', rot:a, vr:0, g:0 });
+  }
+}
 function updateParticles(dt){
   for(let i=PARTS.length-1;i>=0;i--){
     const p=PARTS[i]; p.life-=dt;
@@ -516,6 +526,14 @@ function drawParticles(list){
       const r=(1-a)*90+p.size;
       ctx.strokeStyle=p.color; ctx.lineWidth=4*a+1;
       ctx.beginPath(); ctx.arc(p.x,p.y,r,0,TAU); ctx.stroke();
+    } else if(p.kind==='line'){
+      // radial speed line, lives on impact bursts
+      ctx.strokeStyle=p.color; ctx.lineWidth=3*a+0.5; ctx.lineCap='round';
+      const len=p.size*(1-a*0.4);
+      ctx.beginPath();
+      ctx.moveTo(p.x-Math.cos(p.rot)*len, p.y-Math.sin(p.rot)*len);
+      ctx.lineTo(p.x+Math.cos(p.rot)*len, p.y+Math.sin(p.rot)*len);
+      ctx.stroke();
     } else if(p.kind==='rod'||p.kind==='shard'){
       ctx.save(); ctx.translate(p.x,p.y); ctx.rotate(p.rot);
       ctx.fillStyle=p.color; ctx.fillRect(-p.size/2,-p.size/4,p.size,p.size/2);
@@ -692,8 +710,8 @@ function drawSheep(x,y,sc,opts){
   // dance
   let dance=0;
   if(stage>=5 && G.state==='play'){ dance=Math.sin(S.danceT*10); }
-  // head shake (10+)
-  if(stage>=2 && G.state==='play'){ headRot += Math.sin(S.headShakeT*16)*0.16; }
+  // head shake (10+) - full headbang at high combo
+  if(stage>=2 && G.state==='play'){ headRot += Math.sin(S.headShakeT*16)*0.22; }
   // dead stare rotation
   if(G.state==='dead' || (G.state==='result' && opts.dead)){ headRot += S.deadRot*1.05; bodyRot+=S.deadRot*0.15; }
   if(opts.mascot){ headRot=Math.sin(t*2)*0.06; }
@@ -858,7 +876,7 @@ const G = {
   wallActive:false, nextWallT:9,
   event:null, eventT:0, nextEventT:5, rubberT:0, megaT:0, stormT:0, goldNext:0,
   milestone:'', milestoneC:'#fff', milestoneT:0,
-  shake:0, zoom:0, hitstop:0,
+  shake:0, zoom:0, hitstop:0, beatKick:0, flash:0, deathQuip:'',
   beatPhase:0, lastBeat:-1, attX:0, attY:0,
   deadT:0, best: parseInt(storeGet('sgb_best','0'))||0,
   bestCombo: parseInt(storeGet('sgb_bestcombo','0'))||0,
@@ -871,7 +889,7 @@ const G = {
     this.event=null; this.eventT=0; this.nextEventT=rnd(5,7);
     this.rubberT=0; this.megaT=0; this.stormT=0; this.goldNext=0;
     this.milestone=''; this.milestoneT=0;
-    this.shake=0; this.zoom=0; this.hitstop=0; this.lastBeat=-1; this.deadT=0;
+    this.shake=0; this.zoom=0; this.hitstop=0; this.beatKick=0; this.flash=0; this.lastBeat=-1; this.deadT=0;
     S.reset();
     // seed first rows
     let z=2.6;
@@ -973,6 +991,8 @@ function impact(o, fromSheep, hitter){
   G.shake=Math.min(14, 5+G.combo*0.25+(o.type==='building'?10:0));
   G.zoom=o.type==='building'?0.12:0.06;
   G.hitstop=o.type==='building'?0.12:0.055;
+  burstLines(ip.sx, ip.sy, o.gold?'#ffd84d':SCENES[G.scene].accent, o.type==='building'?18:8);
+  G.flash=Math.max(G.flash, o.type==='building'?0.5:(o.gold?0.28:0.16));
   S.squash=1;
   // sfx
   tp.sfx();
@@ -984,7 +1004,16 @@ function impact(o, fromSheep, hitter){
   // milestone callouts (screen banner)
   const ms={10:['HEADBANG MODE!','#ffd84d'],20:['SIGMA SHADES!','#ffffff'],
             30:['SPARK HORNS!','#ffb52e'],50:['DISCO DASH!','#ff2e97']}[G.combo];
-  if(ms){ G.milestone=ms[0]; G.milestoneC=ms[1]; G.milestoneT=1.6; }
+  if(ms){
+    G.milestone=ms[0]; G.milestoneC=ms[1]; G.milestoneT=1.9;
+    G.hitstop=Math.max(G.hitstop,0.12); G.flash=0.5;
+    burstDebris(ip.sx,ip.sy-40,1,1.2,['#ffd84d','#ff2e97','#22e0ff','#7af5e6','#fff6a8'],'rod',26);
+    sfxRiser();
+  } else if(G.combo>0 && G.combo%5===0){
+    // rotating brainrot callouts every 5 combo
+    G.addPopup(pick(['SHEEESH!','NO CAP!','CERTIFIED BONK','BONK GOES BRRR','ABSOLUTELY FERAL','SHEEP DIFF','MAXIMUM FLUFF','HORN DIFF','BAAA-SED','HE STILL GRAZING']),
+      S.x+rnd(-0.3,0.3), sheepZ()+0.9, pick(['#ff2e97','#22e0ff','#ffd84d','#7af5e6']), 17);
+  }
 }
 
 // ---------------- update ----------------
@@ -1050,6 +1079,8 @@ function updatePlay(dt){
   if(G.comboT>0){ G.comboT-=dt; if(G.comboT<=0 && G.combo>0){ G.combo=0; } }
   if(G.shake>0)G.shake=Math.max(0,G.shake-dt*26);
   if(G.zoom>0)G.zoom=Math.max(0,G.zoom-dt*0.5);
+  if(G.flash>0)G.flash=Math.max(0,G.flash-dt*2.4);
+  if(G.beatKick>0)G.beatKick=Math.max(0,G.beatKick-dt*3.2);
   if(G.hitstop>0){ G.hitstop-=dt; if(G.hitstop>0){ /* freeze world, keep fx */ updateFxOnly(dt); return; } }
 
   // face timers
@@ -1189,6 +1220,7 @@ function updateFxOnly(dt){
   if(G.zoom>0)G.zoom=Math.max(0,G.zoom-dt*0.5);
 }
 function onBeat(){
+  G.beatKick=1;
   // hop handled via phase; could add beat-only fx
   if(G.state==='play' && Math.random()<0.3){
     const lp=project(S.x,sheepZ());
@@ -1212,6 +1244,7 @@ function die(){
   sfxWall();
   A.bleatsOn=false;
   A.intensity=0;
+  G.deathQuip=pick(['the wall remains undefeated','wall: 1  sheep: 0','bonk responsibly','that wall was load-bearing','F in the chat','not a skill issue. a wall issue.','bro hit concrete']);
   if(A.musicBus) A.musicBus.gain.cancelScheduledValues(A.now());
   if(A.musicBus) A.musicBus.gain.setTargetAtTime(0.05,A.now(),0.15);
   PARTS.length=0;
@@ -1226,12 +1259,13 @@ function updateDead(dt){
   updateParticles(dt);
   if(G.shake>0)G.shake=Math.max(0,G.shake-dt*20);
   if(G.zoom>0)G.zoom=Math.max(0,G.zoom-dt*0.3);
+  if(G.flash>0)G.flash=Math.max(0,G.flash-dt*2.4);
   // after 1s pause, head slowly turns
   if(G.deadT>1.0){
     S.deadRot=clamp((G.deadT-1.0)/1.1,0,1);
     S.face='dead';
   }
-  if(G.deadT>2.6){
+  if(G.deadT>3.0){
     // finalize
     G.state='result';
     if(G.score>G.best){ G.best=G.score; storeSet('sgb_best',String(G.best)); }
@@ -1255,6 +1289,15 @@ function drawSceneBase(){
   gg.addColorStop(0,sc.ground[0]); gg.addColorStop(1,sc.ground[1]);
   ctx.fillStyle=gg; ctx.fillRect(0,HORIZON,LW,LH-HORIZON);
 
+  // beat-synced ground pulse ring rising from the bottom
+  if(G.beatKick>0 && G.state==='play'){
+    const k=G.beatKick;
+    ctx.strokeStyle=`rgba(255,255,255,${0.10*k})`;
+    ctx.lineWidth=3;
+    const ry=LH-(1-k)*150;
+    ctx.beginPath(); ctx.ellipse(LW/2,ry, 90+(1-k)*220, 20+(1-k)*36, 0, 0, TAU); ctx.stroke();
+  }
+
   // perspective band strips + lane lines
   const zS=G.camZ;
   ctx.save();
@@ -1271,6 +1314,9 @@ function drawSceneBase(){
   }
   // lane edge + center dashes
   ctx.strokeStyle=sc.line; ctx.lineWidth=2;
+  if(G.beatKick>0 && G.state==='play'){
+    ctx.shadowColor=sc.accent; ctx.shadowBlur=10*G.beatKick;
+  }
   [-1.5,1.5].forEach(xx=>{
     ctx.beginPath();
     for(let z=0;z<7.6;z+=0.2){
@@ -1279,6 +1325,7 @@ function drawSceneBase(){
     }
     ctx.stroke();
   });
+  ctx.shadowBlur=0;
   ctx.setLineDash([10,14]);
   [ -0.75, 0.75].forEach(xx=>{
     ctx.beginPath();
@@ -1380,6 +1427,13 @@ function drawSheepInWorld(){
   // shadow
   ctx.fillStyle='rgba(0,0,0,0.2)';
   ctx.beginPath(); ctx.ellipse(p.sx,p.sy+18,30*p.t,9*p.t,0,0,TAU); ctx.fill();
+  // disco strobe aura at 50+ combo
+  if(comboStage()>=5 && G.state==='play'){
+    const hue=(G.time*240)%360;
+    const dg=ctx.createRadialGradient(p.sx,p.sy,10,p.sx,p.sy,120*p.t);
+    dg.addColorStop(0,`hsla(${hue},100%,62%,0.28)`); dg.addColorStop(1,'rgba(0,0,0,0)');
+    ctx.fillStyle=dg; ctx.beginPath(); ctx.arc(p.sx,p.sy,120*p.t,0,TAU); ctx.fill();
+  }
   drawSheep(p.sx,p.sy,p.t*1.5,{combo:G.combo});
   // horn sparks (30+)
   if(comboStage()>=4 && Math.random()<0.5){
@@ -1427,16 +1481,26 @@ function drawVignette(){
 
 // ---------------- HUD ----------------
 function drawHUD(){
-  // score top-left, tiny
-  ctx.textAlign='left'; ctx.textBaseline='top';
-  ctx.font='800 20px system-ui';
-  ctx.fillStyle='rgba(0,0,0,0.35)'; ctx.fillText(''+G.score, 18, 16);
-  ctx.fillStyle='#fff'; ctx.fillText(''+G.score, 16, 14);
+  // score pill top-left
+  ctx.textAlign='left'; ctx.textBaseline='middle';
+  fillRR(14,14,118,44,14,'rgba(10,10,20,0.35)');
+  ctx.font='700 9px system-ui'; ctx.fillStyle='rgba(255,255,255,0.6)';
+  ctx.fillText('SCORE', 26, 27);
+  ctx.font='900 21px system-ui'; ctx.fillStyle='#fff';
+  ctx.fillText(''+G.score, 26, 45);
+  // scene chip top-right
+  const sc=SCENES[G.scene];
+  fillRR(LW-14-118,14,118,44,14,'rgba(10,10,20,0.35)');
+  ctx.textAlign='right';
+  ctx.font='700 9px system-ui'; ctx.fillStyle='rgba(255,255,255,0.6)';
+  ctx.fillText('SCENE', LW-26, 27);
+  ctx.font='900 13px system-ui'; ctx.fillStyle=sc.accent;
+  ctx.fillText(sc.name, LW-26, 45);
+  ctx.textAlign='left';
   // combo big center-top
   if(G.combo>=2){
-    const pop = 1+Math.max(0,G.comboT/(BEAT*2.8))*0;
     const bp = 1+(1-G.beatPhase)*0.12;
-    ctx.save(); ctx.translate(LW/2,58); ctx.scale(bp,bp);
+    ctx.save(); ctx.translate(LW/2,74); ctx.scale(bp,bp);
     ctx.textAlign='center'; ctx.textBaseline='middle';
     ctx.font='900 40px system-ui';
     ctx.lineWidth=6; ctx.strokeStyle='rgba(0,0,0,0.4)';
@@ -1453,13 +1517,25 @@ function drawHUD(){
     ctx.strokeStyle= frac<0.3?'#ff4d4d':'#7af5e6';
     ctx.beginPath(); ctx.arc(0,0,31,-Math.PI/2,-Math.PI/2+TAU*frac); ctx.stroke();
     ctx.restore();
+    // next evolution progress bar
+    const MS=[10,20,30,50];
+    const next=MS.find(m=>m>G.combo);
+    if(next){
+      const prev=[0,...MS].reverse().find(m=>m<=G.combo)||0;
+      const f=clamp((G.combo-prev)/(next-prev),0,1);
+      const bw=170, bx=LW/2-bw/2, by=122;
+      fillRR(bx,by,bw,10,5,'rgba(0,0,0,0.35)');
+      fillRR(bx+2,by+2,(bw-4)*f,6,3,'#ffd84d');
+      ctx.textAlign='center'; ctx.font='700 9px system-ui'; ctx.fillStyle='rgba(255,255,255,0.85)';
+      ctx.fillText('NEXT EVOLUTION AT '+next, LW/2, by+21);
+    }
   }
   // event banner (hidden while a milestone is showing)
   if(G.event && G.milestoneT<=0){
     const labels={gold:'GOLD RUSH!',rubber:'RUBBER MODE!',storm:'BONK STORM!',mega:'MEGA HORNS!'};
     const colors={gold:'#ffd84d',rubber:'#7af5e6',storm:'#22e0ff',mega:'#ff2e97'};
     const pop=1+Math.sin(G.time*14)*0.04;
-    ctx.save(); ctx.translate(LW/2,118); ctx.scale(pop,pop);
+    ctx.save(); ctx.translate(LW/2,158); ctx.scale(pop,pop);
     ctx.textAlign='center'; ctx.font='900 26px system-ui';
     ctx.lineWidth=6; ctx.strokeStyle='rgba(0,0,0,0.45)';
     ctx.strokeText(labels[G.event],0,0);
@@ -1468,12 +1544,12 @@ function drawHUD(){
   }
   // milestone banner
   if(G.milestoneT>0){
-    const k=clamp(G.milestoneT/1.6,0,1);
+    const k=clamp(G.milestoneT/1.9,0,1);
     const pop=1+(1-k)*0.25;
-    ctx.save(); ctx.translate(LW/2,170); ctx.scale(pop,pop);
+    ctx.save(); ctx.translate(LW/2,196); ctx.scale(pop,pop);
     ctx.globalAlpha=clamp(G.milestoneT/0.4,0,1);
     ctx.textAlign='center'; ctx.textBaseline='middle';
-    ctx.font='900 30px system-ui';
+    ctx.font='900 34px system-ui';
     ctx.lineWidth=7; ctx.strokeStyle='rgba(0,0,0,0.5)';
     ctx.strokeText(G.milestone,0,0);
     ctx.fillStyle=G.milestoneC; ctx.fillText(G.milestone,0,0);
@@ -1505,16 +1581,19 @@ function shade(hex,amt){
 function drawMenu(){
   G.buttons=[];
   const sc=SCENES[G.scene];
-  // bg uses scene 0..? Use selected scene as menu backdrop
+  // bg uses selected scene as menu backdrop
   drawSceneBase();
   // soft top scrim for logo
-  const g=ctx.createLinearGradient(0,0,0,340);
-  g.addColorStop(0,'rgba(12,12,20,0.55)'); g.addColorStop(1,'rgba(12,12,20,0)');
-  ctx.fillStyle=g; ctx.fillRect(0,0,LW,340);
+  const g=ctx.createLinearGradient(0,0,0,360);
+  g.addColorStop(0,'rgba(12,12,20,0.6)'); g.addColorStop(1,'rgba(12,12,20,0)');
+  ctx.fillStyle=g; ctx.fillRect(0,0,LW,360);
 
-  // logo
+  // logo with horns flanking it
   const wob=1+Math.sin(G.time*3)*0.03;
-  ctx.save(); ctx.translate(LW/2,120); ctx.scale(wob,wob);
+  ctx.save(); ctx.translate(LW/2,128); ctx.scale(wob,wob);
+  ctx.strokeStyle='#e8b23c'; ctx.lineCap='round'; ctx.lineWidth=9;
+  ctx.beginPath(); ctx.arc(-122,-34,20,Math.PI*0.85,Math.PI*2.05); ctx.stroke();
+  ctx.beginPath(); ctx.arc(122,-34,20,Math.PI*0.95,Math.PI*2.15); ctx.stroke();
   ctx.textAlign='center'; ctx.textBaseline='middle';
   ctx.font='900 58px system-ui';
   ctx.lineWidth=10; ctx.strokeStyle='rgba(0,0,0,0.4)';
@@ -1525,50 +1604,62 @@ function drawMenu(){
   ctx.font='900 50px system-ui';
   ctx.strokeText('GO BONK',0,18);
   ctx.fillStyle='#fff'; ctx.fillText('GO BONK',0,18);
-  ctx.font='800 14px system-ui'; ctx.fillStyle='rgba(255,255,255,0.9)';
-  ctx.fillText('swipe to steer - bonk everything - do not bonk the wall',0,58);
+  ctx.font='800 13px system-ui'; ctx.fillStyle='rgba(255,255,255,0.92)';
+  ctx.fillText('swipe to steer - bonk everything',0,54);
+  ctx.fillText('never bonk the wall',0,72);
   ctx.restore();
 
   // mascot sheep
   const bob=Math.sin(G.time*2.4)*8;
-  ctx.fillStyle='rgba(0,0,0,0.2)';
-  ctx.beginPath(); ctx.ellipse(LW/2,470,70,16,0,0,TAU); ctx.fill();
-  drawSheep(LW/2,430+bob,2.0,{mascot:true,combo:0,stage:0});
+  ctx.fillStyle='rgba(0,0,0,0.22)';
+  ctx.beginPath(); ctx.ellipse(LW/2,468,74,16,0,0,TAU); ctx.fill();
+  drawSheep(LW/2,426+bob,2.0,{mascot:true,combo:0,stage:0});
 
   // play
-  const playB=button(LW/2-110,520,220,64);
+  const playB=button(LW/2-110,504,220,62);
   drawBtn(playB,'BONK IT!','one run = 10 to 30 seconds','#ff6b3d');
 
-  // scene selector
-  ctx.textAlign='center'; ctx.font='800 14px system-ui'; ctx.fillStyle='rgba(255,255,255,0.9)';
-  ctx.fillText('PICK YOUR CHAOS',LW/2,622);
-  const dotY=660, dotR=24, gapX=72;
+  // scene selector cards
+  ctx.textAlign='center'; ctx.font='800 13px system-ui'; ctx.fillStyle='rgba(255,255,255,0.9)';
+  ctx.fillText('PICK YOUR CHAOS',LW/2,600);
+  const cw=70, ch=78, gap=8, y0=614;
+  const totalW=5*cw+4*gap;
+  const codes=['FIELD','STRIP','ROAD','PUSH','VOID'];
   for(let i=0;i<5;i++){
-    const cx=LW/2+(i-2)*gapX;
-    const b=button(cx-dotR,dotY-dotR,dotR*2,dotR*2);
+    const x=LW/2-totalW/2+i*(cw+gap);
+    const sel=i===G.scene;
+    const y=y0+(sel?-6:0);
+    button(x,y,cw,ch);
     const s=SCENES[i];
-    const gg=ctx.createLinearGradient(cx,dotY-dotR,cx,dotY+dotR);
-    gg.addColorStop(0,s.sky[1]); gg.addColorStop(1,s.ground[1]);
-    ctx.fillStyle=gg; ctx.beginPath(); ctx.arc(cx,dotY,dotR-3,0,TAU); ctx.fill();
-    ctx.strokeStyle= i===G.scene?'#ffffff':'rgba(255,255,255,0.5)';
-    ctx.lineWidth=i===G.scene?4:2;
-    ctx.beginPath(); ctx.arc(cx,dotY,dotR,0,TAU); ctx.stroke();
-    ctx.font='800 9px system-ui'; ctx.fillStyle='#fff';
-    const nm=s.name.split(' ');
-    ctx.fillText(nm[0],cx,dotY+4);
-    ctx.font='800 12px system-ui';
-    ctx.fillStyle=i===G.scene?'#fff':'rgba(255,255,255,0.75)';
-    ctx.fillText(['FIELD','STRIP','ROAD','PUSH','VOID'][i],cx,dotY+34);
+    ctx.save(); rrPath(x,y,cw,ch,12); ctx.clip();
+    const gg=ctx.createLinearGradient(0,y,0,y+ch*0.55);
+    gg.addColorStop(0,s.sky[0]); gg.addColorStop(1,s.sky[1]);
+    ctx.fillStyle=gg; ctx.fillRect(x,y,cw,ch*0.55);
+    const gh=ctx.createLinearGradient(0,y+ch*0.55,0,y+ch);
+    gh.addColorStop(0,s.ground[0]); gh.addColorStop(1,s.ground[1]);
+    ctx.fillStyle=gh; ctx.fillRect(x,y+ch*0.55,cw,ch*0.45);
+    ctx.fillStyle=s.sun; ctx.beginPath(); ctx.arc(x+cw/2,y+ch*0.28,8,0,TAU); ctx.fill();
+    ctx.restore();
+    ctx.strokeStyle= sel?'#ffffff':'rgba(255,255,255,0.35)';
+    ctx.lineWidth=sel?4:2;
+    rrPath(x,y,cw,ch,12); ctx.stroke();
+    ctx.font='800 9px system-ui'; ctx.fillStyle='#fff'; ctx.textAlign='center';
+    ctx.lineWidth=3; ctx.strokeStyle='rgba(0,0,0,0.4)';
+    ctx.strokeText(codes[i],x+cw/2,y+ch-10);
+    ctx.fillText(codes[i],x+cw/2,y+ch-10);
   }
+  // selected scene tag
+  ctx.font='800 11px system-ui'; ctx.fillStyle=sc.accent;
+  ctx.fillText(sc.name+' - '+sc.tag, LW/2, y0+ch+24);
 
   // best + mute
-  ctx.textAlign='center'; ctx.font='800 16px system-ui'; ctx.fillStyle='#fff';
-  ctx.fillText('BEST '+G.best+'   MAX COMBO '+G.bestCombo, LW/2,740);
-  const mb=button(LW/2-65,764,130,40);
+  ctx.font='800 14px system-ui'; ctx.fillStyle='#fff';
+  ctx.fillText('BEST '+G.best+'   MAX COMBO '+G.bestCombo, LW/2, y0+ch+50);
+  const mb=button(LW/2-65,y0+ch+64,130,40);
   drawBtn(mb, A.muted?'SOUND OFF':'SOUND ON',null, A.muted?'#6b7484':'#3f7fd6');
 
   ctx.textAlign='center'; ctx.font='600 10px system-ui'; ctx.fillStyle='rgba(255,255,255,0.5)';
-  ctx.fillText('v1.0 - original sheep, original beats - drag / A / D to steer',LW/2,852);
+  ctx.fillText('v1.1 - original sheep, original beats - drag / A / D to steer',LW/2,868);
 }
 
 function rankFor(score){
@@ -1585,39 +1676,49 @@ function drawResult(){
   ctx.fillStyle='rgba(10,8,18,0.72)'; ctx.fillRect(0,0,LW,LH);
   // the staring sheep, small, top
   const bob=Math.sin(G.time*2)*4;
-  drawSheep(LW/2,150+bob,1.7,{dead:true,combo:G.maxCombo});
+  drawSheep(LW/2,126+bob,1.6,{dead:true,combo:G.maxCombo});
   ctx.textAlign='center'; ctx.textBaseline='middle';
   ctx.font='900 34px system-ui';
   ctx.lineWidth=7; ctx.strokeStyle='rgba(0,0,0,0.5)';
-  ctx.strokeText('BONKED.',LW/2,262);
-  ctx.fillStyle='#ff8a5c'; ctx.fillText('BONKED.',LW/2,262);
+  ctx.strokeText('BONKED.',LW/2,226);
+  ctx.fillStyle='#ff8a5c'; ctx.fillText('BONKED.',LW/2,226);
+  // rotating death quip
+  ctx.font='700 13px system-ui'; ctx.fillStyle='rgba(255,255,255,0.75)';
+  ctx.fillText('"'+G.deathQuip+'"',LW/2,250);
 
-  // rank panel
-  fillRR(40,296,340,86,18,'rgba(255,255,255,0.1)');
-  ctx.font='800 13px system-ui'; ctx.fillStyle='rgba(255,255,255,0.8)';
-  ctx.fillText('OFFICIAL BONK RANK',LW/2,316);
-  ctx.font='900 26px system-ui'; ctx.fillStyle='#ffd84d';
-  ctx.fillText(rankFor(G.score),LW/2,350);
+  // rank badge
+  const rank=rankFor(G.score);
+  fillRR(30,270,360,96,18,'rgba(255,255,255,0.10)');
+  fillRR(34,274,352,28,10,'rgba(255,255,255,0.06)');
+  ctx.font='800 12px system-ui'; ctx.fillStyle='rgba(255,255,255,0.75)';
+  ctx.fillText('OFFICIAL BONK RANK',LW/2,292);
+  ctx.font='900 22px system-ui'; ctx.fillStyle='#ffd84d';
+  ctx.fillText(rank,LW/2,326);
 
-  // stats grid
-  const stat=(label,val,y)=>{
-    ctx.font='700 13px system-ui'; ctx.textAlign='left'; ctx.fillStyle='rgba(255,255,255,0.7)';
-    ctx.fillText(label,70,y);
-    ctx.font='900 20px system-ui'; ctx.textAlign='right'; ctx.fillStyle='#fff';
-    ctx.fillText(val,350,y);
+  // stats grid (two columns)
+  const sc=SCENES[G.scene];
+  const stat=(label,val,x,y)=>{
+    ctx.font='700 12px system-ui'; ctx.textAlign='left'; ctx.fillStyle='rgba(255,255,255,0.65)';
+    ctx.fillText(label,x,y);
+    ctx.font='900 17px system-ui'; ctx.textAlign='right'; ctx.fillStyle='#fff';
+    ctx.fillText(val,x+156,y);
   };
-  stat('SCORE',''+G.score,420);
-  stat('MAX COMBO',G.maxCombo+' BONK',456);
-  stat('OBJECTS BONKED',''+G.bonked,492);
-  stat('BUILDINGS',''+G.buildings,528);
-  stat('SURVIVED',G.time.toFixed(1)+'s',564);
-  ctx.textAlign='center'; ctx.font='800 14px system-ui';
-  ctx.fillStyle= G.score>=G.best && G.score>0 ?'#7af5e6':'rgba(255,255,255,0.7)';
-  ctx.fillText(G.score>=G.best && G.score>0 ?'NEW BEST!' :'BEST '+G.best, LW/2,610);
+  stat('SCORE',''+G.score,50,388);
+  stat('MAX COMBO',G.maxCombo+' BONK',234,388);
+  stat('BONKED',''+G.bonked,50,420);
+  stat('BUILDINGS',''+G.buildings,234,420);
+  stat('TIME',G.time.toFixed(1)+'s',50,452);
+  stat('SCENE',sc.name,234,452);
 
-  const rb=button(LW/2-110,640,220,64);
+  // best / new best row
+  fillRR(LW/2-130,470,260,28,10,'rgba(0,0,0,0.25)');
+  ctx.textAlign='center'; ctx.font='800 13px system-ui';
+  ctx.fillStyle= G.score>=G.best && G.score>0 ?'#7af5e6':'rgba(255,255,255,0.65)';
+  ctx.fillText(G.score>=G.best && G.score>0 ?'NEW BEST! '+G.best :'BEST '+G.best, LW/2,490);
+
+  const rb=button(LW/2-110,522,220,58);
   drawBtn(rb,'BONK AGAIN','enter / space / tap','#ff6b3d');
-  const mb=button(LW/2-80,720,160,48);
+  const mb=button(LW/2-80,592,160,46);
   drawBtn(mb,'MENU',null,'#3f7fd6');
 }
 
@@ -1718,6 +1819,12 @@ function frame(now){
     const z=1+G.zoom;
     ctx.translate(LW/2,LH/2); ctx.scale(z,z); ctx.translate(-LW/2,-LH/2);
   }
+  // dead stare: slow push-in on the sheep's face
+  if(G.state==='dead' && G.deadT>1){
+    const dz=1+clamp((G.deadT-1)/1.9,0,1)*0.32;
+    const sp=project(S.x,sheepZ());
+    ctx.translate(sp.sx,sp.sy); ctx.scale(dz,dz); ctx.translate(-sp.sx,-sp.sy);
+  }
 
   if(G.state==='menu'){ drawMenu(); }
   else {
@@ -1727,6 +1834,7 @@ function frame(now){
     drawParticles(PARTS);
     drawPopups();
     drawVignette();
+    if(G.flash>0){ ctx.fillStyle=`rgba(255,255,255,${G.flash*0.5})`; ctx.fillRect(0,0,LW,LH); }
     if(G.state==='play') drawHUD();
     if(G.state==='dead') drawDeadOverlay();
     if(G.state==='result') drawResult();
@@ -1738,12 +1846,22 @@ function drawDeadOverlay(){
   if(G.deadT<0.4){
     ctx.fillStyle=`rgba(255,255,255,${0.5*(1-G.deadT/0.4)})`; ctx.fillRect(0,0,LW,LH);
   }
-  // awkward silence caption appears near end
-  if(G.deadT>1.6){
-    const a=clamp((G.deadT-1.6)/0.6,0,1);
-    ctx.globalAlpha=a; ctx.textAlign='center';
-    ctx.font='900 22px system-ui'; ctx.fillStyle='rgba(255,255,255,0.9)';
-    ctx.fillText('WHY.', LW/2, 300);
+  // awkward silence beat, then the accusation
+  ctx.textAlign='center'; ctx.textBaseline='middle';
+  if(G.deadT>1.2 && G.deadT<=2.0){
+    const a=clamp((G.deadT-1.2)/0.3,0,1);
+    ctx.globalAlpha=a*0.7;
+    ctx.font='900 26px system-ui'; ctx.fillStyle='#fff';
+    ctx.fillText('. . .', LW/2, 300);
+    ctx.globalAlpha=1;
+  }
+  if(G.deadT>2.0){
+    const a=clamp((G.deadT-2.0)/0.4,0,1);
+    ctx.globalAlpha=a;
+    ctx.font='900 26px system-ui';
+    ctx.lineWidth=5; ctx.strokeStyle='rgba(0,0,0,0.45)';
+    ctx.strokeText('WHY.', LW/2, 300);
+    ctx.fillStyle='#fff'; ctx.fillText('WHY.', LW/2, 300);
     ctx.globalAlpha=1;
   }
 }
