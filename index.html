@@ -10,10 +10,14 @@
     touch-action:none;-webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent;
     overscroll-behavior:none;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;}
   #c{position:fixed;inset:0;display:block;}
+  #safeOuter{position:fixed;inset:0;visibility:hidden;pointer-events:none;
+    padding:env(safe-area-inset-top,0px) env(safe-area-inset-right,0px) env(safe-area-inset-bottom,0px) env(safe-area-inset-left,0px);}
+  #safe{width:100%;height:100%;}
 </style>
 </head>
 <body>
 <canvas id="c"></canvas>
+<div id="safeOuter"><div id="safe"></div></div>
 <script>
 'use strict';
 /* ============================================================
@@ -47,20 +51,36 @@ function storeSet(k,v){ try{ localStorage.setItem(k,v); }catch(e){} }
 const canvas = $('c'), ctx = canvas.getContext('2d');
 const LW=420, LH=900;
 let viewScale=1, offX=0, offY=0, cssW=0, cssH=0, DPR=1;
+let safeT=0, safeB=0, safeL=0, safeR=0;
+function readSafe(){
+  try{
+    const el=$('safe'); if(!el) return;
+    const r=el.getBoundingClientRect();
+    if(r.width<=0||r.height<=0) return;
+    safeT=r.top; safeL=r.left;
+    safeB=window.innerHeight-r.bottom; safeR=window.innerWidth-r.right;
+  }catch(e){}
+}
 function resize(){
+  readSafe();
   DPR = Math.min(window.devicePixelRatio||1, 2);
   cssW = window.innerWidth; cssH = window.innerHeight;
-  const colW = Math.min(cssW, cssH*0.56);
-  const s = Math.min(colW/LW, cssH/LH);
+  const availW = Math.max(120,cssW-safeL-safeR);
+  const availH = Math.max(120,cssH-safeT-safeB);
+  const colW = Math.min(availW, availH*0.56);
+  const s = Math.min(colW/LW, availH/LH);
   viewScale = s;
   const w = LW*s, h = LH*s;
-  offX = (cssW-w)/2; offY = (cssH-h)/2;
+  offX = safeL+(availW-w)/2; offY = safeT+(availH-h)/2;
   canvas.width = Math.round(cssW*DPR);
   canvas.height= Math.round(cssH*DPR);
   canvas.style.width = cssW+'px';
   canvas.style.height= cssH+'px';
 }
 window.addEventListener('resize', resize);
+window.addEventListener('orientationchange', ()=>setTimeout(resize,60));
+if(window.visualViewport && window.visualViewport.addEventListener)
+  window.visualViewport.addEventListener('resize', resize);
 resize();
 function toLocal(cx,cy){
   const r = canvas.getBoundingClientRect();
@@ -381,6 +401,8 @@ const SCENES = [
  { name:'FARM FIELD', tag:'GRASS & GREED',
    sky:['#bfe8ff','#e9f8dd'], ground:['#93dc6e','#57b14c'], line:'rgba(255,255,255,0.26)', accent:'#ffd34d',
    sun:'#fff3b0',
+   light:{sun:[340,92],glow:'#fff3b0',rays:'#fff3b0',haze:'rgba(255,255,255,',shAng:Math.PI*0.94,shLen:0.5,rim:'rgba(255,248,214,0.6)',rimA:[-1.1,0.5]},
+   grade:'rgba(255,225,150,0.05)',
    back(time){
      // sun + hills + clouds
      ctx.fillStyle=this.sun; ctx.beginPath(); ctx.arc(340,92,34,0,TAU); ctx.fill();
@@ -394,6 +416,8 @@ const SCENES = [
  { name:'SUNSET STRIP', tag:'CONCRETE CHAOS',
    sky:['#3b2a6b','#ff8a5c'], ground:['#7a4a94','#43275f'], line:'rgba(255,196,120,0.22)', accent:'#ffd166',
    sun:'#ffd59e',
+   light:{sun:[210,118],glow:'#ffd59e',rays:'#ffb36b',haze:'rgba(255,150,90,',shAng:Math.PI/2,shLen:0.9,rim:'rgba(255,170,110,0.65)',rimA:[-2.6,-0.6]},
+   grade:'rgba(255,110,60,0.08)',
    back(time){
      // striped sun
      ctx.save(); ctx.beginPath(); ctx.arc(210,120,46,0,TAU); ctx.clip();
@@ -415,6 +439,8 @@ const SCENES = [
  { name:'DUST HIGHWAY', tag:'HOT HEADBUTTS',
    sky:['#ffe6a8','#ffb26b'], ground:['#e8b56d','#c07f43'], line:'rgba(255,255,255,0.25)', accent:'#e8503e',
    sun:'#fff0c4',
+   light:{sun:[210,96],glow:'#fff0c4',rays:'#ffe6a8',haze:'rgba(255,215,150,',shAng:Math.PI/2,shLen:0.2,rim:'rgba(255,238,180,0.7)',rimA:[-1.1,0.5]},
+   grade:'rgba(255,190,90,0.09)',
    back(time){
      ctx.fillStyle=this.sun; ctx.beginPath(); ctx.arc(210,96,40,0,TAU); ctx.fill();
      ctx.strokeStyle='rgba(190,110,60,0.5)'; ctx.lineWidth=3; ctx.beginPath();
@@ -434,6 +460,8 @@ const SCENES = [
  { name:'SUGAR PUSH', tag:'EXTRA SWEET BONK',
    sky:['#ffd6ec','#c6f0ff'], ground:['#ff9dcc','#e070ad'], line:'rgba(255,255,255,0.35)', accent:'#7af5e6',
    sun:'#fff6a8',
+   light:{sun:[330,88],glow:'#fff6a8',rays:'#ffd6ec',haze:'rgba(255,205,235,',shAng:Math.PI,shLen:0.5,rim:'rgba(255,255,255,0.65)',rimA:[-1.1,0.5]},
+   grade:'rgba(255,160,210,0.07)',
    back(time){
      // lollipop sun
      ctx.fillStyle=this.sun; ctx.beginPath(); ctx.arc(330,88,30,0,TAU); ctx.fill();
@@ -453,6 +481,8 @@ const SCENES = [
  { name:'NEON VOID', tag:'SYNTHWAVE RAM',
    sky:['#0b0420','#1d0c40'], ground:['#190b38','#08051c'], line:'rgba(255,46,151,0.45)', accent:'#22e0ff',
    sun:'#ff2e97',
+   light:{sun:null,glow:'#ff2e97',haze:'rgba(140,70,230,',shAng:Math.PI/2,shLen:0.4,rim:'rgba(34,224,255,0.55)',rimA:[-0.9,0.9],flicker:true},
+   grade:'rgba(110,40,220,0.10)',
    back(time){
      // stars
      ctx.fillStyle='#fff';
@@ -466,6 +496,9 @@ const SCENES = [
      ctx.fillStyle=this.sun; ctx.fillRect(158,64,104,108);
      ctx.fillStyle='#0b0420';
      for(let i=0;i<6;i++) ctx.fillRect(158,104+i*9,104,4);
+     // flicker strobe on the neon sun
+     ctx.fillStyle='rgba(11,4,32,'+((1-flicker())*0.45).toFixed(3)+')';
+     ctx.fillRect(158,64,104,108);
      ctx.restore();
      // mountains
      ctx.fillStyle='rgba(34,224,255,0.25)';
@@ -764,6 +797,13 @@ function drawSheep(x,y,sc,opts){
   // body shadow under
   ctx.fillStyle='rgba(120,100,70,0.12)';
   ctx.beginPath(); ctx.ellipse(-4,16,26,10,0,0,TAU); ctx.fill();
+
+  // rim light from the scene sun
+  if(opts.rim){
+    const ra=opts.rimA||[-1.1,0.5];
+    ctx.strokeStyle=opts.rim; ctx.lineWidth=3.5; ctx.lineCap='round';
+    ctx.beginPath(); ctx.arc(-4,-2,32,ra[0],ra[1]); ctx.stroke();
+  }
 
   // ---- head ----
   ctx.save();
@@ -1339,6 +1379,128 @@ function drawSceneBase(){
   ctx.restore();
   ctx.restore(); // release full-scene clip
 }
+
+// ---------------- lighting & atmosphere ----------------
+function hexA(hex,a){
+  const n=parseInt(hex.slice(1),16);
+  return 'rgba('+((n>>16)&255)+','+((n>>8)&255)+','+(n&255)+','+a+')';
+}
+function sceneLight(){
+  const sc=SCENES[G.scene];
+  return sc.light||{sun:null,glow:'#ffffff',haze:'rgba(255,255,255,',shAng:Math.PI/2,shLen:0.35,
+    rim:'rgba(255,255,255,0.5)',rimA:[-1.1,0.5]};
+}
+function flicker(){
+  const f=0.72+0.28*Math.abs(Math.sin(G.time*11)+0.5*Math.sin(G.time*23+1.7));
+  return clamp(f,0.35,1);
+}
+function drawSkyLight(){
+  const sc=SCENES[G.scene], L=sceneLight();
+  ctx.save();
+  ctx.beginPath(); ctx.rect(0,0,LW,LH); ctx.clip();
+  const beat=G.beatKick;
+  // sun glow halo + rotating god rays
+  if(L.sun){
+    const sx=L.sun[0], sy=L.sun[1];
+    const puls=1+beat*0.16+Math.sin(G.time*1.3)*0.04;
+    if(!sc._sunG){
+      const g=ctx.createRadialGradient(sx,sy,12,sx,sy,190);
+      g.addColorStop(0,hexA(L.glow,0.50));
+      g.addColorStop(0.45,hexA(L.glow,0.20));
+      g.addColorStop(1,hexA(L.glow,0));
+      sc._sunG=g;
+    }
+    ctx.fillStyle=sc._sunG;
+    ctx.beginPath(); ctx.arc(sx,sy,190*puls,0,TAU); ctx.fill();
+    ctx.save();
+    ctx.translate(sx,sy); ctx.rotate(G.time*0.05);
+    ctx.globalAlpha=0.09+0.07*beat;
+    ctx.fillStyle=L.rays||L.glow;
+    for(let i=0;i<7;i++){
+      const a=i/7*TAU, len=(i%2?320:460)*puls, w=0.10+(i%2)*0.05;
+      ctx.beginPath();
+      ctx.moveTo(Math.cos(a-w)*42,Math.sin(a-w)*42);
+      ctx.lineTo(Math.cos(a)*len,Math.sin(a)*len);
+      ctx.lineTo(Math.cos(a+w)*len,Math.sin(a+w)*len);
+      ctx.lineTo(Math.cos(a+w)*42,Math.sin(a+w)*42);
+      ctx.closePath(); ctx.fill();
+    }
+    ctx.globalAlpha=1;
+    ctx.restore();
+  }
+  // horizon atmospheric haze
+  if(!sc._hazeG){
+    const g=ctx.createLinearGradient(0,HORIZON-80,0,HORIZON+46);
+    g.addColorStop(0,L.haze+'0)');
+    g.addColorStop(0.55,L.haze+'0.30)');
+    g.addColorStop(1,L.haze+'0)');
+    sc._hazeG=g;
+  }
+  ctx.fillStyle=sc._hazeG;
+  ctx.fillRect(0,HORIZON-80,LW,126);
+  // neon light pools on the ground (flickering scenes)
+  if(L.flicker){
+    if(!sc._pools){
+      sc._pools=[[84,792,120],[210,852,140],[336,806,112]].map(pt=>{
+        const g=ctx.createRadialGradient(pt[0],pt[1],4,pt[0],pt[1],pt[2]);
+        g.addColorStop(0,'rgba(255,46,151,0.30)');
+        g.addColorStop(0.55,'rgba(122,60,255,0.15)');
+        g.addColorStop(1,'rgba(122,60,255,0)');
+        return {g:g,x:pt[0],y:pt[1],r:pt[2]};
+      });
+    }
+    const fl=flicker();
+    for(const p of sc._pools){
+      ctx.globalAlpha=fl*(0.65+0.35*Math.sin(G.time*3+p.x));
+      ctx.fillStyle=p.g;
+      ctx.beginPath(); ctx.ellipse(p.x,p.y,p.r,p.r*0.35,0,0,TAU); ctx.fill();
+    }
+    ctx.globalAlpha=1;
+  }
+  ctx.restore();
+}
+function drawObjShadow(o,sp,t){
+  const L=sceneLight();
+  const liftK=clamp(1-(o.lift||0)/3.5,0.3,1);
+  const base=o.r*SPREAD*t*0.85;
+  const ext=1+L.shLen;
+  const ang=L.shAng, dx=Math.cos(ang), dy=Math.sin(ang);
+  const off=base*0.30*L.shLen;
+  const neon=!!L.flicker;
+  // stretched soft tail
+  ctx.fillStyle=neon?'rgba(255,46,151,0.10)':'rgba(0,0,0,0.09)';
+  ctx.beginPath();
+  ctx.ellipse(sp.sx+dx*off*1.7,sp.sy+4+dy*off*1.1,base*ext,base*0.30,ang,0,TAU);
+  ctx.fill();
+  // darker core
+  ctx.fillStyle=neon?'rgba(255,46,151,'+(0.20*liftK).toFixed(3)+')':'rgba(0,0,0,'+(0.19*liftK).toFixed(3)+')';
+  ctx.beginPath();
+  ctx.ellipse(sp.sx+dx*off*0.6,sp.sy+4+dy*off*0.4,base,base*0.30,ang,0,TAU);
+  ctx.fill();
+}
+function drawSheepShadow(p){
+  const L=sceneLight();
+  const k=1-clamp(S.hop,0,1)*0.22;
+  const ang=L.shAng, dx=Math.cos(ang), dy=Math.sin(ang);
+  const off=10*p.t*L.shLen;
+  const neon=!!L.flicker;
+  ctx.fillStyle=neon?'rgba(255,46,151,0.14)':'rgba(0,0,0,0.16)';
+  ctx.beginPath();
+  ctx.ellipse(p.sx+dx*off,p.sy+18+dy*off*0.5,30*p.t*k*(1+L.shLen*0.3),9*p.t*k,ang,0,TAU);
+  ctx.fill();
+}
+let _vigG=null;
+function drawGrade(){
+  const sc=SCENES[G.scene];
+  if(sc.grade){ ctx.fillStyle=sc.grade; ctx.fillRect(0,0,LW,LH); }
+  if(!_vigG){
+    _vigG=ctx.createRadialGradient(LW/2,LH*0.46,LH*0.30,LW/2,LH*0.50,LH*0.72);
+    _vigG.addColorStop(0,'rgba(0,0,0,0)');
+    _vigG.addColorStop(1,'rgba(8,6,16,0.22)');
+  }
+  ctx.fillStyle=_vigG;
+  ctx.fillRect(0,0,LW,LH);
+}
 function drawWall(r){
   if(r.z-G.camZ<-0.3) return;
   const w=r.wall;
@@ -1408,25 +1570,35 @@ function drawWorld(){
     const p=project(o.x,o.z,o.lift);
     if(p.t<=0) continue;
     const sc=p.t*1.05;
-    // ground shadow
+    // directional soft ground shadow
     const sp=project(o.x,o.z,0);
-    ctx.fillStyle='rgba(0,0,0,0.18)';
-    ctx.beginPath();
-    ctx.ellipse(sp.sx,sp.sy+4,o.r*SPREAD*p.t*0.9,o.r*SPREAD*p.t*0.32,0,0,TAU); ctx.fill();
+    drawObjShadow(o,sp,p.t);
     // idle bob for static
     drawTarget(o,p.sx,p.sy,sc*1.05);
     if(o.gold){
-      ctx.fillStyle='rgba(255,216,77,0.25)';
-      ctx.beginPath(); ctx.arc(p.sx,p.sy,o.r*SPREAD*sc*1.2,0,TAU); ctx.fill();
+      // pulsing gold light + glint
+      const pu=0.5+0.5*Math.sin(G.time*6+o.z*3);
+      const R=o.r*SPREAD*sc*1.5;
+      const gg=ctx.createRadialGradient(p.sx,p.sy,2,p.sx,p.sy,R);
+      gg.addColorStop(0,'rgba(255,216,77,'+(0.30+0.18*pu).toFixed(3)+')');
+      gg.addColorStop(1,'rgba(255,216,77,0)');
+      ctx.fillStyle=gg; ctx.beginPath(); ctx.arc(p.sx,p.sy,R,0,TAU); ctx.fill();
+      ctx.strokeStyle='rgba(255,250,220,'+(0.5*pu).toFixed(3)+')';
+      ctx.lineWidth=2;
+      const gl=R*0.42;
+      ctx.beginPath();
+      ctx.moveTo(p.sx-gl,p.sy); ctx.lineTo(p.sx+gl,p.sy);
+      ctx.moveTo(p.sx,p.sy-gl); ctx.lineTo(p.sx,p.sy+gl);
+      ctx.stroke();
     }
   }
 }
 function drawSheepInWorld(){
   const zS=sheepZ();
   const p=project(S.x,zS);
-  // shadow
-  ctx.fillStyle='rgba(0,0,0,0.2)';
-  ctx.beginPath(); ctx.ellipse(p.sx,p.sy+18,30*p.t,9*p.t,0,0,TAU); ctx.fill();
+  const L=sceneLight();
+  // directional soft shadow
+  drawSheepShadow(p);
   // disco strobe aura at 50+ combo
   if(comboStage()>=5 && G.state==='play'){
     const hue=(G.time*240)%360;
@@ -1434,7 +1606,7 @@ function drawSheepInWorld(){
     dg.addColorStop(0,`hsla(${hue},100%,62%,0.28)`); dg.addColorStop(1,'rgba(0,0,0,0)');
     ctx.fillStyle=dg; ctx.beginPath(); ctx.arc(p.sx,p.sy,120*p.t,0,TAU); ctx.fill();
   }
-  drawSheep(p.sx,p.sy,p.t*1.5,{combo:G.combo});
+  drawSheep(p.sx,p.sy,p.t*1.5,{combo:G.combo,rim:L.rim,rimA:L.rimA});
   // horn sparks (30+)
   if(comboStage()>=4 && Math.random()<0.5){
     spawnParticle({x:p.sx+rnd(-24,24)*p.t,y:p.sy-rnd(34,60)*p.t,vx:rnd(-2,2),vy:rnd(-3,-1),
@@ -1583,6 +1755,8 @@ function drawMenu(){
   const sc=SCENES[G.scene];
   // bg uses selected scene as menu backdrop
   drawSceneBase();
+  drawSkyLight();
+  drawGrade();
   // soft top scrim for logo
   const g=ctx.createLinearGradient(0,0,0,360);
   g.addColorStop(0,'rgba(12,12,20,0.6)'); g.addColorStop(1,'rgba(12,12,20,0)');
@@ -1659,7 +1833,7 @@ function drawMenu(){
   drawBtn(mb, A.muted?'SOUND OFF':'SOUND ON',null, A.muted?'#6b7484':'#3f7fd6');
 
   ctx.textAlign='center'; ctx.font='600 10px system-ui'; ctx.fillStyle='rgba(255,255,255,0.5)';
-  ctx.fillText('v1.1 - original sheep, original beats - drag / A / D to steer',LW/2,868);
+  ctx.fillText('v1.2 - light & shadow update - drag / A / D to steer',LW/2,868);
 }
 
 function rankFor(score){
@@ -1829,11 +2003,13 @@ function frame(now){
   if(G.state==='menu'){ drawMenu(); }
   else {
     drawSceneBase();
+    drawSkyLight();
     drawWorld();
     drawSheepInWorld();
     drawParticles(PARTS);
     drawPopups();
     drawVignette();
+    drawGrade();
     if(G.flash>0){ ctx.fillStyle=`rgba(255,255,255,${G.flash*0.5})`; ctx.fillRect(0,0,LW,LH); }
     if(G.state==='play') drawHUD();
     if(G.state==='dead') drawDeadOverlay();
